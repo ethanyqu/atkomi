@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -159,7 +159,6 @@ const createEnemyWave = (wave: number): Enemy[] => {
   if (wave % 5 === 0) return [];
   
   const enemies: Enemy[] = [];
-  const difficulty = Math.min(wave, 50);
   const formation = wave % 4;
   
   const baseCount = 8 + Math.floor(wave / 2);
@@ -1049,7 +1048,7 @@ export default function SpaceInvadersComplete() {
                 case 'firetrail': hasFireTrail = true; activePowerUps = [...activePowerUps, { type: 'firetrail', timer: duration }]; break;
                 case 'minigun': hasMinigun = true; spreadShot = false; hasLaser = false; activePowerUps = [...activePowerUps, { type: 'minigun', timer: duration }]; break;
                 case 'explosive': hasExplosive = true; activePowerUps = [...activePowerUps, { type: 'explosive', timer: duration }]; break;
-                case 'orbital': hasOrbital = true; if (orbitals.length < 4) orbitals = Array(4).fill(0).map((_, i) => ({ id: getId(), angle: (Math.PI * 2 * i) / 4 })); activePowerUps = [...activePowerUps, { type: 'orbital', timer: duration }]; break;
+                case 'orbital': hasOrbital = true; if (orbitals.length < 4) orbitals = Array(4).fill(0).map((_, i) => ({ id: getId(), x: player.x, y: player.y, angle: (Math.PI * 2 * i) / 4 })); activePowerUps = [...activePowerUps, { type: 'orbital', timer: duration }]; break;
                 case 'nuke':
                   enemies.forEach(e => { newParticles.push(...createExplosion(e.x + 15, e.y + 13, '#ffd93d', 6)); score += ENEMY_CONFIG[e.type].points; });
                   enemies = [];
