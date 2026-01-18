@@ -65,11 +65,11 @@ const ENEMY_CONFIG: Record<EnemyType, { health: number; points: number; emoji: s
 };
 
 const BOSS_CONFIG: Record<BossType, { name: string; emoji: string; color: string; baseHealth: number; width: number; height: number }> = {
-  mothership: { name: 'MOTHERSHIP', emoji: '🛸', color: '#22c55e', baseHealth: 300, width: 120, height: 60 },
-  kraken: { name: 'COSMIC KRAKEN', emoji: '🐙', color: '#a855f7', baseHealth: 400, width: 140, height: 100 },
-  phoenix: { name: 'SPACE PHOENIX', emoji: '🦅', color: '#f97316', baseHealth: 500, width: 130, height: 80 },
-  hydra: { name: 'CYBER HYDRA', emoji: '🐉', color: '#14b8a6', baseHealth: 650, width: 150, height: 110 },
-  deathstar: { name: 'DEATH STAR', emoji: '🌑', color: '#ef4444', baseHealth: 800, width: 160, height: 160 },
+  mothership: { name: 'MOTHERSHIP', emoji: '🛸', color: '#22c55e', baseHealth: 150, width: 120, height: 60 },
+  kraken: { name: 'COSMIC KRAKEN', emoji: '🐙', color: '#a855f7', baseHealth: 200, width: 140, height: 100 },
+  phoenix: { name: 'SPACE PHOENIX', emoji: '🦅', color: '#f97316', baseHealth: 260, width: 130, height: 80 },
+  hydra: { name: 'CYBER HYDRA', emoji: '🐉', color: '#14b8a6', baseHealth: 330, width: 150, height: 110 },
+  deathstar: { name: 'DEATH STAR', emoji: '🌑', color: '#ef4444', baseHealth: 420, width: 160, height: 160 },
 };
 
 const POWERUP_INFO: Record<PowerUpType, { emoji: string; name: string; color: string; rarity: number }> = {
