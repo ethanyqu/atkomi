@@ -64,11 +64,11 @@ const ENEMY_CONFIG: Record<EnemyType, { health: number; points: number; emoji: s
 };
 
 const BOSS_CONFIG: Record<BossType, { name: string; emoji: string; color: string; baseHealth: number; width: number; height: number }> = {
-  mothership: { name: 'MOTHERSHIP', emoji: '🛸', color: '#22c55e', baseHealth: 50, width: 120, height: 60 },
-  kraken: { name: 'COSMIC KRAKEN', emoji: '🐙', color: '#a855f7', baseHealth: 80, width: 140, height: 100 },
-  phoenix: { name: 'SPACE PHOENIX', emoji: '🦅', color: '#f97316', baseHealth: 100, width: 130, height: 80 },
-  hydra: { name: 'CYBER HYDRA', emoji: '🐉', color: '#14b8a6', baseHealth: 130, width: 150, height: 110 },
-  deathstar: { name: 'DEATH STAR', emoji: '🌑', color: '#ef4444', baseHealth: 180, width: 160, height: 160 },
+  mothership: { name: 'MOTHERSHIP', emoji: '🛸', color: '#22c55e', baseHealth: 150, width: 120, height: 60 },
+  kraken: { name: 'COSMIC KRAKEN', emoji: '🐙', color: '#a855f7', baseHealth: 200, width: 140, height: 100 },
+  phoenix: { name: 'SPACE PHOENIX', emoji: '🦅', color: '#f97316', baseHealth: 250, width: 130, height: 80 },
+  hydra: { name: 'CYBER HYDRA', emoji: '🐉', color: '#14b8a6', baseHealth: 320, width: 150, height: 110 },
+  deathstar: { name: 'DEATH STAR', emoji: '🌑', color: '#ef4444', baseHealth: 400, width: 160, height: 160 },
 };
 
 const POWERUP_INFO: Record<PowerUpType, { emoji: string; name: string; color: string; rarity: number }> = {
@@ -979,7 +979,8 @@ export default function SpaceInvadersComplete() {
                 boss = { ...boss, shields: boss.shields - 1 };
                 newParticles.push(...createExplosion(bullet.x, bullet.y, '#3b82f6', 6));
               } else {
-                let damage = (2 + damageBonus) * (hasExplosive ? 3 : 1);  // Base 2 damage to bosses
+                // Base 1 damage to bosses, +0.5 per damage upgrade, explosive adds 50% more
+                let damage = (1 + damageBonus * 0.5) * (hasExplosive ? 1.5 : 1);
                 boss = { ...boss, health: boss.health - damage };
                 newParticles.push(...createExplosion(bullet.x, bullet.y, config.color, hasExplosive ? 10 : 4));
                 screenShake = Math.max(screenShake, 2);
@@ -1168,7 +1169,13 @@ export default function SpaceInvadersComplete() {
                 case 'nuke':
                   enemies.forEach(e => { newParticles.push(...createExplosion(e.x + 15, e.y + 13, '#ffd93d', 6)); score += ENEMY_CONFIG[e.type].points; });
                   enemies = [];
-                  if (boss) { boss = { ...boss, health: boss.health - 50, shields: 0 }; if (boss.health <= 0) boss = null; }
+                  // Nuke does 15% of boss max health, removes 1 shield
+                  if (boss) {
+                    const nukeDamage = Math.floor(boss.maxHealth * 0.15);
+                    const newShields = boss.shields ? Math.max(0, boss.shields - 1) : 0;
+                    boss = { ...boss, health: boss.health - nukeDamage, shields: newShields };
+                    if (boss.health <= 0) boss = null;
+                  }
                   enemyBullets = [];
                   screenShake = 25;
                   break;
