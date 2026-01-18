@@ -497,6 +497,11 @@ export default function SpaceInvadersComplete() {
     const enemyMoveTimer = useRef<number>(0);
     const frameCount = useRef<number>(0);
 
+    // Mobile touch controls
+    const touchActive = useRef<boolean>(false);
+    const touchTarget = useRef<{ x: number; y: number }>({ x: GAME_WIDTH / 2, y: GAME_HEIGHT - 70 });
+    const [isMobile, setIsMobile] = useState(false);
+
     const upgrades = playerDataRef.current.upgrades;
     const damageBonus = upgrades.damage || 0;
     const fireRateBonus = upgrades.fireRate || 0;
@@ -506,6 +511,16 @@ export default function SpaceInvadersComplete() {
     const speedBonus = 1 + (upgrades.speed || 0) * 0.15;
     const bulletSizeBonus = (upgrades.bulletSize || 0) * 2;
     const hasAutoRevive = (upgrades.revive || 0) > 0;
+
+    // Detect mobile device
+    useEffect(() => {
+      const checkMobile = () => {
+        setIsMobile('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      };
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
+    }, []);
 
     // Input handling
     useEffect(() => {
@@ -536,6 +551,48 @@ export default function SpaceInvadersComplete() {
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
       };
+    }, []);
+
+    // Touch controls
+    const getTouchPos = useCallback((e: React.TouchEvent, gameRect: DOMRect) => {
+      const touch = e.touches[0];
+      const x = touch.clientX - gameRect.left;
+      const y = touch.clientY - gameRect.top;
+      return { x, y };
+    }, []);
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+      e.preventDefault();
+      const gameRect = gameRef.current?.querySelector('.game-canvas')?.getBoundingClientRect();
+      if (!gameRect) return;
+
+      touchActive.current = true;
+      const pos = getTouchPos(e, gameRect);
+      touchTarget.current = {
+        x: Math.max(PLAYER_WIDTH / 2, Math.min(GAME_WIDTH - PLAYER_WIDTH / 2, pos.x)),
+        y: Math.max(GAME_HEIGHT - 280, Math.min(GAME_HEIGHT - 40, pos.y))
+      };
+      keysPressed.current.add(' '); // Auto-fire on touch
+    }, [getTouchPos]);
+
+    const handleTouchMove = useCallback((e: React.TouchEvent) => {
+      e.preventDefault();
+      if (!touchActive.current) return;
+
+      const gameRect = gameRef.current?.querySelector('.game-canvas')?.getBoundingClientRect();
+      if (!gameRect) return;
+
+      const pos = getTouchPos(e, gameRect);
+      touchTarget.current = {
+        x: Math.max(PLAYER_WIDTH / 2, Math.min(GAME_WIDTH - PLAYER_WIDTH / 2, pos.x)),
+        y: Math.max(GAME_HEIGHT - 280, Math.min(GAME_HEIGHT - 40, pos.y))
+      };
+    }, [getTouchPos]);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+      e.preventDefault();
+      touchActive.current = false;
+      keysPressed.current.delete(' ');
     }, []);
 
     // Game loop
@@ -572,12 +629,28 @@ export default function SpaceInvadersComplete() {
         let newPlayerX = player.x;
         let newPlayerY = player.y;
         const speed = PLAYER_SPEED * berserkMult * speedBonus;
-        
+
+        // Keyboard controls
         if (keys.has('arrowleft') || keys.has('a')) newPlayerX -= speed;
         if (keys.has('arrowright') || keys.has('d')) newPlayerX += speed;
         if (keys.has('arrowup') || keys.has('w')) newPlayerY -= speed * 0.6;
         if (keys.has('arrowdown') || keys.has('s')) newPlayerY += speed * 0.6;
-        
+
+        // Touch controls - smooth movement towards touch target
+        if (touchActive.current) {
+          const targetX = touchTarget.current.x - PLAYER_WIDTH / 2;
+          const targetY = touchTarget.current.y - PLAYER_HEIGHT / 2;
+          const dx = targetX - newPlayerX;
+          const dy = targetY - newPlayerY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist > 5) {
+            const moveSpeed = Math.min(speed * 1.2, dist);
+            newPlayerX += (dx / dist) * moveSpeed;
+            newPlayerY += (dy / dist) * moveSpeed;
+          }
+        }
+
         newPlayerX = Math.max(0, Math.min(GAME_WIDTH - PLAYER_WIDTH, newPlayerX));
         newPlayerY = Math.max(GAME_HEIGHT - 280, Math.min(GAME_HEIGHT - 40, newPlayerY));
         player = { x: newPlayerX, y: newPlayerY };
@@ -1200,10 +1273,15 @@ export default function SpaceInvadersComplete() {
         </div>
 
         {/* Game canvas */}
-        <div className="relative overflow-hidden rounded border-2 border-purple-600"
+        <div className="relative overflow-hidden rounded border-2 border-purple-600 game-canvas"
              style={{ width: GAME_WIDTH, height: GAME_HEIGHT,
                       background: boss ? `linear-gradient(to bottom, #1a0505 0%, #0a0a1a 100%)` : 'linear-gradient(to bottom, #0a0a1a 0%, #1a0a2e 50%, #0a1a2a 100%)',
-                      transform: `translate(${shakeX}px, ${shakeY}px)` }}>
+                      transform: `translate(${shakeX}px, ${shakeY}px)`,
+                      touchAction: 'none' }}
+             onTouchStart={handleTouchStart}
+             onTouchMove={handleTouchMove}
+             onTouchEnd={handleTouchEnd}
+             onTouchCancel={handleTouchEnd}>
           
           {/* Stars */}
           {[...Array(60)].map((_, i) => (
@@ -1318,7 +1396,19 @@ export default function SpaceInvadersComplete() {
           ))}
         </div>
 
-        <div className="text-gray-500 text-xs mt-2">ESC to quit • Arrow keys/WASD to move • Space to shoot</div>
+        <div className="text-gray-500 text-xs mt-2">
+          {isMobile ? 'Touch and drag to move • Auto-fires while touching' : 'ESC to quit • Arrow keys/WASD to move • Space to shoot'}
+        </div>
+
+        {/* Mobile back button */}
+        {isMobile && (
+          <button
+            onClick={() => setScreenRef.current('home')}
+            className="mt-3 bg-gray-800 hover:bg-gray-700 text-white font-bold px-6 py-2 rounded-lg"
+          >
+            ← Back to Menu
+          </button>
+        )}
       </div>
     );
   };
