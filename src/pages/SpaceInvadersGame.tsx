@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -301,6 +302,13 @@ export default function SpaceInvadersComplete() {
   // ===========================================
   const HomeScreen = () => (
     <div className="w-full max-w-lg mx-auto min-h-screen bg-gradient-to-b from-red-700 via-red-600 to-red-800 p-4 flex flex-col">
+      {/* Back to Games Link */}
+      <Link to="/" className="mb-2 text-white/70 hover:text-white text-sm flex items-center gap-1 w-fit">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Games
+      </Link>
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <div className="bg-orange-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg">
