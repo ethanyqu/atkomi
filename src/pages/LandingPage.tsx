@@ -21,6 +21,15 @@ const games: Game[] = [
     status: 'playable',
   },
   {
+    id: 'tank-warfare',
+    title: 'Tank Warfare',
+    description: 'Survive endless waves of enemies! Upgrade your weapons from pistol to DEATH CANNON.',
+    emoji: '🪖',
+    gradient: 'from-green-600 via-emerald-500 to-lime-500',
+    path: '/tank-warfare',
+    status: 'playable',
+  },
+  {
     id: 'snake',
     title: 'Snake',
     description: 'Classic snake game with modern twists. Eat, grow, and survive!',
