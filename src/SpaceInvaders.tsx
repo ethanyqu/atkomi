@@ -221,22 +221,46 @@ const createEnemy = (x: number, y: number, wave: number, row?: number): Enemy =>
 const createBoss = (wave: number): Boss => {
   const type = getBossForWave(wave);
   const config = BOSS_CONFIG[type];
-  const scaleFactor = 1 + Math.floor(wave / 15) * 0.2;  // Much slower scaling
-  
+
+  // Progressive scaling: bosses get stronger each time you fight them
+  // Wave 5 = first encounter (1x), Wave 10 = second cycle starts
+  // Each full cycle (every 25 waves) adds significant difficulty
+  const cycleNumber = Math.floor((wave - 5) / 25); // 0, 1 for waves 5-50
+  const waveInCycle = ((wave - 5) % 25) / 25; // 0 to ~1 within each cycle
+
+  // Health scales: base * (1.5^cycle) * (1 + 0.3 * waveProgress)
+  const healthScale = Math.pow(1.5, cycleNumber) * (1 + waveInCycle * 0.4);
+
   const boss: Boss = {
     id: getId(), type,
     x: GAME_WIDTH / 2 - config.width / 2,
     y: -config.height - 20,
     phase: 1,
-    health: Math.ceil(config.baseHealth * scaleFactor),
-    maxHealth: Math.ceil(config.baseHealth * scaleFactor),
+    health: Math.ceil(config.baseHealth * healthScale),
+    maxHealth: Math.ceil(config.baseHealth * healthScale),
     attackPattern: 0, attackTimer: 0, moveDirection: 1, specialTimer: 0,
   };
-  
-  if (type === 'kraken') boss.tentacles = Array(6).fill(0).map((_, i) => ({ angle: (Math.PI * i) / 3, length: 60 }));
-  if (type === 'deathstar') { boss.shields = 3; boss.charging = false; }
-  if (type === 'hydra') boss.heads = 3;
-  
+
+  // Kraken gets more tentacles at higher waves
+  if (type === 'kraken') {
+    const tentacleCount = 6 + cycleNumber * 2; // 6, 8 tentacles
+    boss.tentacles = Array(tentacleCount).fill(0).map((_, i) => ({
+      angle: (Math.PI * 2 * i) / tentacleCount,
+      length: 60 + wave * 0.5
+    }));
+  }
+
+  // Death Star gets more shields at higher waves
+  if (type === 'deathstar') {
+    boss.shields = 3 + cycleNumber * 2; // 3, 5 shields
+    boss.charging = false;
+  }
+
+  // Hydra gets more heads at higher waves
+  if (type === 'hydra') {
+    boss.heads = 3 + cycleNumber; // 3, 4 heads
+  }
+
   return boss;
 };
 
@@ -858,43 +882,62 @@ export default function SpaceInvadersComplete() {
         }
         enemyBullets = [...enemyBullets, ...newEnemyBullets];
 
-        // Boss AI (simplified for length)
+        // Boss AI - scales with wave number
         if (boss && freezeTimer <= 0 && (!boss.frozen || boss.frozen <= 0)) {
           const config = BOSS_CONFIG[boss.type];
+
+          // Wave-based scaling for boss behavior
+          const bulletSpeed = 3 + wave * 0.05; // Faster bullets at higher waves
+          const moveSpeed = (1.5 + boss.phase * 0.3) * (1 + wave * 0.01); // Faster movement
+
           if (boss.y < 60) {
             boss = { ...boss, y: boss.y + 1.5 };
           } else {
             boss = { ...boss, attackTimer: boss.attackTimer + slowFactor, specialTimer: boss.specialTimer + slowFactor };
-            boss = { ...boss, x: boss.x + boss.moveDirection * (1.5 + boss.phase * 0.3) };
+            boss = { ...boss, x: boss.x + boss.moveDirection * moveSpeed };
             if (boss.x < 20) boss = { ...boss, moveDirection: 1 };
             if (boss.x > GAME_WIDTH - config.width - 20) boss = { ...boss, moveDirection: -1 };
-            
+
             const bossCenter = boss.x + config.width / 2;
-            
-            if (boss.attackTimer > 80 - boss.phase * 5) {
+
+            // Attack faster at higher waves (80 -> down to 50 at wave 50)
+            const attackCooldown = Math.max(50, 80 - wave * 0.6) - boss.phase * 5;
+
+            if (boss.attackTimer > attackCooldown) {
               boss = { ...boss, attackTimer: 0, attackPattern: (boss.attackPattern + 1) % 4 };
-              
-              // Attack patterns based on boss type - NERFED
+
+              // Number of bullets scales with wave
+              const bulletCount = Math.min(5 + Math.floor(wave / 10), 8); // 5 to 8 bullets
+
+              // Attack patterns - scale with wave
               if (boss.attackPattern === 0) {
-                for (let i = -2; i <= 2; i++) {
-                  newEnemyBullets.push({ id: getId(), x: bossCenter, y: boss.y + config.height, vx: i * 0.8, vy: 3 });
+                // Spread shot - more bullets at higher waves
+                for (let i = -Math.floor(bulletCount / 2); i <= Math.floor(bulletCount / 2); i++) {
+                  newEnemyBullets.push({ id: getId(), x: bossCenter, y: boss.y + config.height, vx: i * 0.8, vy: bulletSpeed });
                 }
               } else if (boss.attackPattern === 1) {
+                // Aimed shot - more bullets at higher waves
                 const dx = player.x - bossCenter;
                 const dy = player.y - boss.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                for (let i = 0; i < 3; i++) {
-                  newEnemyBullets.push({ id: getId(), x: bossCenter + (i - 1) * 15, y: boss.y + config.height, vx: (dx / dist) * 4, vy: (dy / dist) * 4 });
+                const aimedCount = 3 + Math.floor(wave / 15); // 3-5 aimed bullets
+                for (let i = 0; i < aimedCount; i++) {
+                  const offset = (i - (aimedCount - 1) / 2) * 15;
+                  newEnemyBullets.push({ id: getId(), x: bossCenter + offset, y: boss.y + config.height, vx: (dx / dist) * (bulletSpeed + 1), vy: (dy / dist) * (bulletSpeed + 1) });
                 }
               } else if (boss.attackPattern === 2) {
-                for (let i = 0; i < 6; i++) {
-                  const angle = (Math.PI * 2 * i) / 6 + frameCount.current * 0.05;
-                  newEnemyBullets.push({ id: getId(), x: bossCenter, y: boss.y + config.height / 2, vx: Math.cos(angle) * 2.5, vy: Math.sin(angle) * 2 + 2 });
+                // Spiral shot - more bullets at higher waves
+                const spiralCount = 6 + Math.floor(wave / 10); // 6 to 10
+                for (let i = 0; i < spiralCount; i++) {
+                  const angle = (Math.PI * 2 * i) / spiralCount + frameCount.current * 0.05;
+                  newEnemyBullets.push({ id: getId(), x: bossCenter, y: boss.y + config.height / 2, vx: Math.cos(angle) * (bulletSpeed - 0.5), vy: Math.sin(angle) * 2 + 2 });
                 }
               } else {
-                if (enemies.length < 4) {
-                  for (let i = 0; i < 2; i++) {
-                    enemies = [...enemies, createEnemy(boss.x + 30 + i * 40, boss.y + config.height + 10, wave)];
+                // Spawn minions - more at higher waves
+                const minionCount = 2 + Math.floor(wave / 20); // 2-4 minions
+                if (enemies.length < 6) {
+                  for (let i = 0; i < minionCount; i++) {
+                    enemies = [...enemies, createEnemy(boss.x + 20 + i * 35, boss.y + config.height + 10, wave)];
                   }
                 }
               }
