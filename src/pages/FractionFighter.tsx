@@ -14,6 +14,8 @@ type Player = {
   attacking: boolean; atkTimer: number;
   hp: number; maxHp: number; iframes: number;
   trail: { x: number; y: number; life: number }[];
+  scale: number; // 1.0 = normal, grows on kills, max 2.5
+  ducking: boolean;
 };
 
 type Enemy = {
@@ -30,7 +32,7 @@ type Particle = {
   text?: string;
 };
 
-type Slash = { x: number; y: number; w: number; h: number; life: number };
+type Slash = { x: number; y: number; w: number; h: number; life: number; dmg: number };
 
 type GameData = {
   player: Player;
@@ -48,10 +50,19 @@ type GameData = {
 };
 
 const MONSTER_TYPES = [
-  { frac: '1/2', w: 48, h: 48, maxHp: 2, color: '#0f0', color2: '#060', speed: 1, pts: 50 },
-  { frac: '1/3', w: 44, h: 50, maxHp: 3, color: '#f0f', color2: '#606', speed: 1.2, pts: 75 },
-  { frac: '1/4', w: 50, h: 50, maxHp: 1, color: '#ff0', color2: '#660', speed: 1.5, pts: 40 },
-  { frac: '3/4', w: 55, h: 55, maxHp: 4, color: '#f60', color2: '#630', speed: 0.8, pts: 100 },
+  // Easy
+  { frac: '1/2', w: 48, h: 48, maxHp: 2, color: '#0f0', color2: '#060', speed: 0.5, pts: 50 },
+  { frac: '1/4', w: 50, h: 50, maxHp: 1, color: '#ff0', color2: '#660', speed: 0.75, pts: 40 },
+  { frac: '1/3', w: 44, h: 50, maxHp: 3, color: '#f0f', color2: '#606', speed: 0.6, pts: 75 },
+  // Medium
+  { frac: '2/3', w: 50, h: 50, maxHp: 3, color: '#0cf', color2: '#068', speed: 0.55, pts: 80 },
+  { frac: '3/4', w: 55, h: 55, maxHp: 4, color: '#f60', color2: '#630', speed: 0.4, pts: 100 },
+  { frac: '2/5', w: 46, h: 46, maxHp: 2, color: '#f0a', color2: '#806', speed: 0.65, pts: 60 },
+  // Hard
+  { frac: '5/8', w: 52, h: 52, maxHp: 4, color: '#a0f', color2: '#508', speed: 0.5, pts: 90 },
+  { frac: '3/5', w: 48, h: 48, maxHp: 3, color: '#0fa', color2: '#086', speed: 0.6, pts: 85 },
+  { frac: '7/8', w: 58, h: 58, maxHp: 5, color: '#f44', color2: '#822', speed: 0.35, pts: 120 },
+  { frac: '5/6', w: 54, h: 54, maxHp: 5, color: '#ff4', color2: '#884', speed: 0.45, pts: 110 },
 ];
 
 function makeStars(): BgStar[] {
@@ -75,7 +86,8 @@ function makePlayer(): Player {
     x: 100, y: GY - 44, w: 34, h: 44,
     vy: 0, jumps: 0, maxJumps: 2, grounded: true,
     attacking: false, atkTimer: 0,
-    hp: 5, maxHp: 5, iframes: 0, trail: [],
+    hp: 10, maxHp: 10, iframes: 0, trail: [],
+    scale: 2.5, ducking: false,
   };
 }
 
@@ -89,7 +101,7 @@ function initGameData(): GameData {
     bgBuildings: makeBuildings(),
     score: 0,
     kills: 0,
-    speed: 4,
+    speed: 2.5,
     frame: 0,
     gridOffset: 0,
     keys: {},
@@ -151,15 +163,45 @@ function drawNinja(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.quadraticCurveTo(x - 10, y + h * 0.15 + Math.sin(fr * 0.1) * 6, x - 15, y + h * 0.3 + Math.sin(fr * 0.08) * 8);
   ctx.stroke();
 
+  // Arm + Katana
   neonGlow(ctx, '#0ff', 12);
   ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2.5;
   if (attacking) {
-    ctx.beginPath(); ctx.moveTo(cx + 6, y + h * 0.35); ctx.lineTo(cx + w + 15, y + h * 0.1); ctx.stroke();
-    neonGlow(ctx, '#fff', 18);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(cx + w + 15, y + h * 0.1); ctx.lineTo(cx + w + 30, y - 5); ctx.stroke();
+    // Arm swinging forward
+    ctx.beginPath(); ctx.moveTo(cx + 6, y + h * 0.35); ctx.lineTo(cx + w + 10, y + h * 0.15); ctx.stroke();
+    // Katana handle (tsuka)
+    neonGlow(ctx, '#fa0', 6);
+    ctx.strokeStyle = '#a66'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(cx + w + 8, y + h * 0.18); ctx.lineTo(cx + w + 18, y + h * 0.08); ctx.stroke();
+    // Katana guard (tsuba)
+    ctx.fillStyle = '#fc0';
+    ctx.beginPath(); ctx.ellipse(cx + w + 18, y + h * 0.08, 4, 2.5, -0.6, 0, Math.PI * 2); ctx.fill();
+    // Katana blade - long, glowing slash
+    neonGlow(ctx, '#fff', 22);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(cx + w + 18, y + h * 0.08); ctx.lineTo(cx + w + 50, y - 15); ctx.stroke();
+    // Blade edge highlight
+    neonGlow(ctx, '#0ff', 15);
+    ctx.strokeStyle = 'rgba(0,255,255,0.6)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx + w + 19, y + h * 0.06); ctx.lineTo(cx + w + 51, y - 17); ctx.stroke();
+    // Blade tip
+    neonGlow(ctx, '#fff', 12);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(cx + w + 50, y - 15); ctx.lineTo(cx + w + 54, y - 18); ctx.lineTo(cx + w + 49, y - 18); ctx.closePath(); ctx.fill();
   } else {
-    ctx.beginPath(); ctx.moveTo(cx + 6, y + h * 0.35); ctx.lineTo(cx + w * 0.4, y + h * 0.55); ctx.stroke();
+    // Arm resting, katana held down
+    ctx.beginPath(); ctx.moveTo(cx + 6, y + h * 0.35); ctx.lineTo(cx + w * 0.35, y + h * 0.5); ctx.stroke();
+    // Katana handle at rest
+    neonGlow(ctx, '#fa0', 4);
+    ctx.strokeStyle = '#a66'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(cx + w * 0.33, y + h * 0.48); ctx.lineTo(cx + w * 0.45, y + h * 0.58); ctx.stroke();
+    // Guard
+    ctx.fillStyle = '#fc0';
+    ctx.beginPath(); ctx.ellipse(cx + w * 0.45, y + h * 0.58, 3, 2, 0.5, 0, Math.PI * 2); ctx.fill();
+    // Blade resting (pointing down-forward)
+    neonGlow(ctx, '#aae', 8);
+    ctx.strokeStyle = 'rgba(200,210,255,0.7)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx + w * 0.45, y + h * 0.58); ctx.lineTo(cx + w * 0.75, y + h * 0.85); ctx.stroke();
   }
 
   noGlow(ctx);
@@ -209,6 +251,72 @@ function drawMonster(ctx: CanvasRenderingContext2D, e: Enemy) {
     ctx.beginPath();
     for (let i = 0; i < sides; i++) { const a = Math.PI * 2 / sides * i - Math.PI / 2; ctx.lineTo(cx + Math.cos(a) * r * 0.5, cy + Math.sin(a) * r * 0.5); }
     ctx.closePath(); ctx.fill();
+  } else if (frac === '2/3') {
+    // Two-thirds: circle with a wedge missing
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, w * 0.45, -Math.PI * 0.33, Math.PI * 1.67); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = color2;
+    ctx.beginPath(); ctx.arc(cx, cy, w * 0.25, 0, Math.PI * 2); ctx.fill();
+  } else if (frac === '2/5') {
+    // Pentagon with 2/5 filled
+    const r = w * 0.45, sides = 5;
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) { const a = Math.PI * 2 / sides * i - Math.PI / 2; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = color2;
+    ctx.beginPath();
+    for (let i = 0; i < 2; i++) { const a = Math.PI * 2 / sides * i - Math.PI / 2; ctx.lineTo(cx + Math.cos(a) * r * 0.55, cy + Math.sin(a) * r * 0.55); }
+    ctx.lineTo(cx, cy);
+    ctx.closePath(); ctx.fill();
+  } else if (frac === '5/8') {
+    // Octagon shape
+    const r = w * 0.45, sides = 8;
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) { const a = Math.PI * 2 / sides * i - Math.PI / 2; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = color2;
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) { const a = Math.PI * 2 / sides * i - Math.PI / 2; ctx.lineTo(cx + Math.cos(a) * r * 0.5, cy + Math.sin(a) * r * 0.5); }
+    ctx.closePath(); ctx.fill();
+  } else if (frac === '3/5') {
+    // Diamond shape
+    const r = w * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = color2;
+    const ri = r * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - ri); ctx.lineTo(cx + ri, cy); ctx.lineTo(cx, cy + ri); ctx.lineTo(cx - ri, cy);
+    ctx.closePath(); ctx.fill();
+  } else if (frac === '7/8') {
+    // Big spiky star
+    const r = w * 0.45;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = Math.PI * 2 / 8 * i - Math.PI / 2;
+      const rr = i % 2 === 0 ? r : r * 0.6;
+      ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = color2;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.3, 0, Math.PI * 2); ctx.fill();
+  } else if (frac === '5/6') {
+    // Hexagon with small wedge missing
+    const r = w * 0.45, sides = 6;
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) { const a = Math.PI * 2 / sides * i - Math.PI / 2; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+    ctx.closePath(); ctx.fill();
+    // Small missing slice
+    ctx.fillStyle = '#0a0a20';
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r + 2, -Math.PI * 0.17, Math.PI * 0.17); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = color2;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.35, 0, Math.PI * 2); ctx.fill();
+  } else {
+    // Generic circle fallback
+    ctx.beginPath(); ctx.arc(cx, cy, w * 0.45, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = color2;
+    ctx.beginPath(); ctx.arc(cx, cy, w * 0.25, 0, Math.PI * 2); ctx.fill();
   }
 
   neonGlow(ctx, '#ff0', 8);
@@ -235,6 +343,320 @@ function drawMonster(ctx: CanvasRenderingContext2D, e: Enemy) {
   ctx.restore();
 }
 
+// ============ SYNTHWAVE NEON MUSIC ENGINE ============
+class NeonMusic {
+  private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private running = false;
+  private nextBeat = 0;
+  private beat = 0;
+  private bpm = 128;
+  private timerId: number | null = null;
+
+  // Synthwave chord progressions (Am - F - C - G)
+  private chords = [
+    [220, 261.63, 329.63],   // Am
+    [174.61, 220, 261.63],   // F
+    [261.63, 329.63, 392],   // C
+    [196, 246.94, 293.66],   // G
+  ];
+
+  // Bass line notes
+  private bassNotes = [110, 87.31, 130.81, 98];
+
+  // Melody pattern (pentatonic neon vibes)
+  private melodyNotes = [
+    440, 523.25, 587.33, 659.25, 783.99,
+    659.25, 523.25, 440, 392, 523.25,
+    587.33, 783.99, 659.25, 523.25, 587.33, 440,
+  ];
+
+  start() {
+    if (this.running) return;
+    this.ctx = new AudioContext();
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.value = 0.3;
+    this.masterGain.connect(this.ctx.destination);
+    this.running = true;
+    this.beat = 0;
+    this.nextBeat = this.ctx.currentTime;
+    this.schedule();
+  }
+
+  stop() {
+    this.running = false;
+    if (this.timerId !== null) clearTimeout(this.timerId);
+    if (this.masterGain) {
+      this.masterGain.gain.linearRampToValueAtTime(0, (this.ctx?.currentTime ?? 0) + 0.3);
+    }
+    setTimeout(() => {
+      this.ctx?.close();
+      this.ctx = null;
+      this.masterGain = null;
+    }, 500);
+  }
+
+  private schedule() {
+    if (!this.running || !this.ctx || !this.masterGain) return;
+    const beatLen = 60 / this.bpm;
+
+    while (this.nextBeat < this.ctx.currentTime + 0.2) {
+      const chordIdx = Math.floor(this.beat / 8) % 4;
+      const beatInBar = this.beat % 8;
+
+      // Kick drum on 1 and 5
+      if (beatInBar === 0 || beatInBar === 4) {
+        this.playKick(this.nextBeat);
+      }
+
+      // Hi-hat on every beat, accent on off-beats
+      this.playHihat(this.nextBeat, beatInBar % 2 === 1 ? 0.08 : 0.04);
+
+      // Snare on 2 and 6
+      if (beatInBar === 2 || beatInBar === 6) {
+        this.playSnare(this.nextBeat);
+      }
+
+      // Synth pad chord - every 8 beats
+      if (beatInBar === 0) {
+        this.playPad(this.nextBeat, this.chords[chordIdx], beatLen * 7.5);
+      }
+
+      // Bass on 1, 3, 5, 7
+      if (beatInBar % 2 === 0) {
+        this.playBass(this.nextBeat, this.bassNotes[chordIdx], beatLen * 1.5);
+      }
+
+      // Arpeggio melody
+      if (beatInBar % 2 === 0 || (this.beat > 16 && beatInBar === 3)) {
+        const melIdx = this.beat % this.melodyNotes.length;
+        this.playArp(this.nextBeat, this.melodyNotes[melIdx], beatLen * 0.8);
+      }
+
+      this.beat++;
+      this.nextBeat += beatLen;
+    }
+
+    this.timerId = window.setTimeout(() => this.schedule(), 100);
+  }
+
+  private playKick(time: number) {
+    if (!this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, time);
+    osc.frequency.exponentialRampToValueAtTime(30, time + 0.12);
+    gain.gain.setValueAtTime(0.5, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(time);
+    osc.stop(time + 0.3);
+  }
+
+  private playSnare(time: number) {
+    if (!this.ctx || !this.masterGain) return;
+    // Noise burst
+    const bufferSize = this.ctx.sampleRate * 0.1;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.2, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 2000;
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    noise.start(time);
+    noise.stop(time + 0.12);
+  }
+
+  private playHihat(time: number, vol: number) {
+    if (!this.ctx || !this.masterGain) return;
+    const bufferSize = this.ctx.sampleRate * 0.05;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(vol, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 8000;
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    noise.start(time);
+    noise.stop(time + 0.05);
+  }
+
+  private playBass(time: number, freq: number, dur: number) {
+    if (!this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.15, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 400;
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(time);
+    osc.stop(time + dur);
+  }
+
+  private playPad(time: number, freqs: number[], dur: number) {
+    if (!this.ctx || !this.masterGain) return;
+    for (const freq of freqs) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      // Slight detune for richness
+      osc.detune.value = (Math.random() - 0.5) * 10;
+      gain.gain.setValueAtTime(0, time);
+      gain.gain.linearRampToValueAtTime(0.06, time + 0.3);
+      gain.gain.linearRampToValueAtTime(0.04, time + dur * 0.7);
+      gain.gain.linearRampToValueAtTime(0, time + dur);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(time);
+      osc.stop(time + dur + 0.1);
+    }
+  }
+
+  private playArp(time: number, freq: number, dur: number) {
+    if (!this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.06, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(3000, time);
+    filter.frequency.exponentialRampToValueAtTime(800, time + dur);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(time);
+    osc.stop(time + dur);
+  }
+
+  // SFX: slash hit on a monster
+  playSlashHit() {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    // Quick high-pitched metallic swipe
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1200, now);
+    osc.frequency.exponentialRampToValueAtTime(300, now + 0.08);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 2000;
+    filter.Q.value = 2;
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.1);
+    // Noise layer for impact
+    const bufSize = this.ctx.sampleRate * 0.06;
+    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
+    const ns = this.ctx.createBufferSource();
+    ns.buffer = buf;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.1, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    const nf = this.ctx.createBiquadFilter();
+    nf.type = 'highpass';
+    nf.frequency.value = 3000;
+    ns.connect(nf);
+    nf.connect(ng);
+    ng.connect(this.masterGain);
+    ns.start(now);
+    ns.stop(now + 0.06);
+  }
+
+  // SFX: monster killed
+  playKillSound() {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    // Rising pitch burst
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.12);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 4000;
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  }
+
+  // SFX: player hit "oof" sound
+  playOof() {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    // Low thud - dropping pitch for that "oof" feeling
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(200, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.25);
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.3);
+    // Short noise burst for impact
+    const bufSize = this.ctx.sampleRate * 0.08;
+    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
+    const ns = this.ctx.createBufferSource();
+    ns.buffer = buf;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.12, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    const nf = this.ctx.createBiquadFilter();
+    nf.type = 'lowpass';
+    nf.frequency.value = 800;
+    ns.connect(nf);
+    nf.connect(ng);
+    ng.connect(this.masterGain);
+    ns.start(now);
+    ns.stop(now + 0.08);
+  }
+}
+
+const musicEngine = new NeonMusic();
+
 export default function FractionFighter() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'menu' | 'playing' | 'gameover'>('menu');
@@ -251,6 +673,7 @@ export default function FractionFighter() {
     setDisplayKills(0);
     setDisplayHp(100);
     setGameState('playing');
+    musicEngine.start();
   }, []);
 
   useEffect(() => {
@@ -281,9 +704,13 @@ export default function FractionFighter() {
       if (P.attacking) return;
       P.attacking = true;
       P.atkTimer = 12;
-      g.slashes.push({ x: P.x + P.w, y: P.y - 5, w: 40, h: P.h + 10, life: 8 });
+      musicEngine.playSlashHit();
+      const slashW = 40 * P.scale;
+      const slashH = (P.h + 10) * P.scale;
+      const dmg = Math.floor(P.scale) + 3; // base 4 dmg at 1.0, scales up with size
+      g.slashes.push({ x: P.x + P.w * P.scale, y: P.y - 5 * P.scale, w: slashW, h: slashH, life: 8, dmg });
       for (let i = 0; i < 8; i++) {
-        spawnPart(g, P.x + P.w + 20, P.y + P.h * 0.3, Math.random() * 6 + 2, (Math.random() - 0.5) * 5, '#fff', 12, 2 + Math.random() * 2);
+        spawnPart(g, P.x + P.w * P.scale + 20, P.y + P.h * 0.3, Math.random() * 6 + 2, (Math.random() - 0.5) * 5, '#fff', 12, (2 + Math.random() * 2) * P.scale);
       }
     };
 
@@ -296,10 +723,17 @@ export default function FractionFighter() {
       if (e.code === 'KeyX' || e.code === 'KeyZ') {
         doAttack();
       }
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+        e.preventDefault();
+        g.player.ducking = true;
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       g.keys[e.code] = false;
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+        g.player.ducking = false;
+      }
     };
 
     const handleMouseDown = () => {
@@ -330,7 +764,7 @@ export default function FractionFighter() {
 
     const update = () => {
       g.frame++;
-      g.speed = 4 + g.score / 600;
+      g.speed = 2.5 + g.score / 1000;
 
       const P = g.player;
       P.vy += 0.7;
@@ -343,7 +777,7 @@ export default function FractionFighter() {
       if (!P.grounded) P.trail.push({ x: P.x + P.w / 2, y: P.y + P.h / 2, life: 10 });
       P.trail = P.trail.filter(t => { t.life--; return t.life > 0; });
 
-      const spawnRate = Math.max(50, 100 - Math.floor(g.score / 150));
+      const spawnRate = Math.max(90, 180 - Math.floor(g.score / 200));
       if (g.frame % spawnRate === 0) spawnEnemy();
 
       for (const e of g.enemies) {
@@ -352,12 +786,17 @@ export default function FractionFighter() {
         for (const s of g.slashes) {
           if (s.life > 0 && rectHit(s.x, s.y, s.w, s.h, e.x, e.y, e.w, e.h)) {
             if (!e.hitThisSlash) {
-              e.hp--;
+              e.hp -= s.dmg; // bigger ninja = more damage
               e.hitThisSlash = true;
+              musicEngine.playSlashHit();
               for (let i = 0; i < 6; i++) spawnPart(g, e.x + e.w / 2, e.y + e.h / 2, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, e.color, 18, 3);
               if (e.hp <= 0) {
                 g.kills++;
                 g.score += e.pts;
+                musicEngine.playKillSound();
+                // Grow on kill! Max scale 2.5
+                const P = g.player;
+                P.scale = Math.min(2.5, P.scale + 0.05);
                 for (let i = 0; i < 15; i++) spawnPart(g, e.x + e.w / 2, e.y + e.h / 2, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, e.color, 25, 2 + Math.random() * 3);
                 spawnPart(g, e.x + e.w / 2, e.y, 0, -2, '#fff', 40, 0, e.frac + ' SLASHED!');
               }
@@ -365,9 +804,14 @@ export default function FractionFighter() {
           }
         }
 
-        if (e.hp > 0 && P.iframes <= 0 && rectHit(P.x + 4, P.y + 4, P.w - 8, P.h - 4, e.x + 4, e.y + 4, e.w - 8, e.h - 8)) {
+        const pW = P.w * P.scale;
+        const fullH = P.h * P.scale;
+        const pH = P.ducking ? fullH * 0.5 : fullH; // half height when ducking
+        const pY = P.y + P.h - pH; // anchor to feet
+        if (e.hp > 0 && P.iframes <= 0 && rectHit(P.x + 4, pY + 4, pW - 8, pH - 4, e.x + 4, e.y + 4, e.w - 8, e.h - 8)) {
           P.hp--;
           P.iframes = 45;
+          musicEngine.playOof();
           if (P.hp <= 0) {
             for (let i = 0; i < 25; i++) {
               spawnPart(g, P.x + P.w / 2, P.y + P.h / 2, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, ['#0ff', '#f0f', '#ff0'][i % 3], 35, 2 + Math.random() * 4);
@@ -375,6 +819,7 @@ export default function FractionFighter() {
             setHighScore(prev => Math.max(prev, g.score));
             setDisplayScore(g.score);
             setDisplayKills(g.kills);
+            musicEngine.stop();
             setGameState('gameover');
             return;
           } else {
@@ -452,7 +897,7 @@ export default function FractionFighter() {
         neonGlow(ctx, '#fff', 20);
         ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(s.x + s.w / 2, s.y + s.h / 2, 25, -0.8, 0.8);
+        ctx.arc(s.x + s.w / 2, s.y + s.h / 2, 25 * (s.dmg > 1 ? 1.5 : 1), -0.8, 0.8);
         ctx.stroke();
         noGlow(ctx);
       }
@@ -460,8 +905,20 @@ export default function FractionFighter() {
       if (P.iframes > 0 && Math.floor(P.iframes / 3) % 2 === 0) {
         ctx.globalAlpha = 0.4;
       }
-      drawNinja(ctx, P.x, P.y, P.w, P.h, P.attacking, !P.grounded, g.frame);
+      // Draw ninja scaled up (squash when ducking)
+      const sw = P.ducking ? P.w * P.scale * 1.3 : P.w * P.scale;
+      const sh = P.ducking ? P.h * P.scale * 0.5 : P.h * P.scale;
+      const sx = P.x;
+      const sy = P.y + P.h - sh; // anchor to feet
+      drawNinja(ctx, sx, sy, sw, sh, P.attacking, !P.grounded, g.frame);
       ctx.globalAlpha = 1;
+
+      // Draw size indicator when scaled up
+      if (P.scale > 1.05) {
+        noGlow(ctx);
+        ctx.fillStyle = '#0ff'; ctx.font = 'bold 11px Orbitron, monospace'; ctx.textAlign = 'center';
+        ctx.fillText(`x${P.scale.toFixed(1)}`, P.x + sw / 2, sy - 8);
+      }
 
       for (const e of g.enemies) {
         if (e.hp > 0) drawMonster(ctx, e);
@@ -517,6 +974,7 @@ export default function FractionFighter() {
         </p>
         <div className="text-gray-400 mb-8 text-center text-sm tracking-wider">
           <p className="mb-2"><span style={{ color: '#0ff' }}>SPACE/UP</span> jump &bull; <span style={{ color: '#0ff' }}>DOUBLE JUMP</span> in air</p>
+          <p className="mb-2"><span style={{ color: '#0ff' }}>DOWN/S</span> duck</p>
           <p><span style={{ color: '#0ff' }}>X / CLICK</span> slash attack</p>
         </div>
         <button
