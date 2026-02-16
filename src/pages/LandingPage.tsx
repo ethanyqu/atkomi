@@ -30,6 +30,15 @@ const games: Game[] = [
     status: 'playable',
   },
   {
+    id: 'fraction-fighter',
+    title: 'Fraction Fighter',
+    description: 'Neon runner! Jump and slash fraction monsters as a cyber ninja.',
+    emoji: '🥷',
+    gradient: 'from-cyan-500 via-purple-500 to-pink-500',
+    path: '/fraction-fighter',
+    status: 'playable',
+  },
+  {
     id: 'snake',
     title: 'Snake',
     description: 'Classic snake game with modern twists. Eat, grow, and survive!',
